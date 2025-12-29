@@ -30,15 +30,23 @@ with col3:
     st.metric("Unique Languages", safe_df["language"].nunique())
 
 st.subheader("Harm Categories")
-categories = sorted(set.union(*[set(tax) for tax in safe_df["taxonomy"]]))
-st.write(", ".join(categories))
+try:
+    # Robust computation: flat set comprehension for unique categories
+    categories = sorted({cat for tax in safe_df["taxonomy"] for cat in tax})
+    st.write(", ".join(categories))
+except Exception as e:
+    st.error(f"Error computing categories: {e}. Falling back to manual list.")
+    categories = ["bias-discrimination", "misinformation", "privacy-violation", "unsettling-interaction", 
+                  "vulnerable-misguidance", "violence-toxicity", "operational-disruption", 
+                  "brand-damaging-conduct", "interaction-disconnect", "criminal-conduct"]
+    st.write(", ".join(categories))
 
 # Sidebar filters
 st.sidebar.header("Filters")
 selected_category = st.sidebar.multiselect(
     "Select Harm Categories",
     options=categories,
-    default=[categories[0]]  # Default to first category
+    default=[categories[0]] if categories else []  # Default to first if available
 )
 selected_language = st.sidebar.selectbox(
     "Select Language",
@@ -46,14 +54,19 @@ selected_language = st.sidebar.selectbox(
     index=0
 )
 
-# Filter data
+# Filter data (robust: skip non-list taxonomies)
+def has_category(tax, cats):
+    if not isinstance(tax, (list, tuple)):
+        return False
+    return any(cat in cats for cat in tax)
+
 filtered_safe = safe_df[
     (safe_df["language"] == selected_language) &
-    (safe_df["taxonomy"].apply(lambda x: any(cat in selected_category for cat in x)))
+    (safe_df["taxonomy"].apply(lambda x: has_category(x, selected_category)))
 ]
 filtered_unsafe = unsafe_df[
     (unsafe_df["language"] == selected_language) &
-    (unsafe_df["taxonomy"].apply(lambda x: any(cat in selected_category for cat in x)))
+    (unsafe_df["taxonomy"].apply(lambda x: has_category(x, selected_category)))
 ]
 
 # Match samples by sample_id (strip prefix for matching)
@@ -79,7 +92,8 @@ else:
             st.write(f"**Sample ID:** {row['sample_id_unsafe']}")
             st.write(f"**Context:** {row['context_unsafe']}")
             st.write(f"**Source:** [{row['source_unsafe']}]({row['source_unsafe']})")
-            st.write("**Harm Categories:**", ", ".join(row['taxonomy_unsafe']))
+            safe_tax = row['taxonomy_unsafe'] if isinstance(row['taxonomy_unsafe'], (list, tuple)) else []
+            st.write("**Harm Categories:**", ", ".join(safe_tax))
 
             for msg in row["conversation_unsafe"]:
                 role_badge = "👤" if msg["role"] == "user" else "🤖"
@@ -90,7 +104,8 @@ else:
             st.write(f"**Sample ID:** {row['sample_id_safe']}")
             st.write(f"**Context:** {row['context_safe']}")
             st.write(f"**Source:** [{row['source_safe']}]({row['source_safe']})")
-            st.write("**Harm Categories:**", ", ".join(row['taxonomy_safe']))
+            unsafe_tax = row['taxonomy_safe'] if isinstance(row['taxonomy_safe'], (list, tuple)) else []
+            st.write("**Harm Categories:**", ", ".join(unsafe_tax))
 
             for msg in row["conversation_safe"]:
                 role_badge = "👤" if msg["role"] == "user" else "🤖"
