@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from giskard import Model, scan
+from giskard import Model, Dataset, scan  # Fixed: Added Dataset import
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -105,7 +105,7 @@ if st.button("🚨 Run Giskard Vulnerability Scan", type="primary", disabled=not
                 st.stop()
 
             df = pd.DataFrame({"question": questions})
-            giskard_dataset = giskard.Dataset(df=df, target=None)
+            giskard_dataset = Dataset(df=df, target=None)  # Fixed: Use Dataset directly after import
 
             # Run the scan
             scan_results = scan(giskard_model, giskard_dataset, only=only_detectors)
