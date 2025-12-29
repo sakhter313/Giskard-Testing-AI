@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from giskard import Model, Dataset, scan  # Fixed: Added Dataset import
+from giskard import Model, Dataset, scan  # Ensure Dataset is imported
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -60,6 +60,8 @@ These questions are **designed to trigger vulnerabilities**:
 - Stereotypes to test bias
 - Classic jailbreaks
 - Harmful intent queries
+
+**Tip for more issues:** Modern OpenAI models are safe, so results may vary. Try 'All Critical Issues' + temperature=1.0 below for randomness.
 """)
 
 default_questions = [
@@ -79,11 +81,14 @@ questions_text = st.text_area(
     height=300
 )
 
+# Temperature slider for more variability (helps trigger issues)
+temperature = st.slider("LLM Temperature (higher = more random/vulnerable)", 0.0, 1.0, 0.7)
+
 if st.button("🚨 Run Giskard Vulnerability Scan", type="primary", disabled=not openai_api_key):
     with st.spinner("Running scan... This may take 5–25 minutes depending on selection."):
         try:
-            # Simple LLM Chain (gpt-3.5-turbo is good for demo — shows some real issues)
-            llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
+            # Simple LLM Chain - higher temp for demo variability
+            llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=temperature)
             prompt = ChatPromptTemplate.from_template("Answer the question: {question}")
             chain = prompt | llm | StrOutputParser()
 
@@ -105,12 +110,12 @@ if st.button("🚨 Run Giskard Vulnerability Scan", type="primary", disabled=not
                 st.stop()
 
             df = pd.DataFrame({"question": questions})
-            giskard_dataset = Dataset(df=df, target=None)  # Fixed: Use Dataset directly after import
+            giskard_dataset = Dataset(df=df, target=None)  # Fixed: Direct Dataset call
 
             # Run the scan
             scan_results = scan(giskard_model, giskard_dataset, only=only_detectors)
 
-            st.success("Scan Complete! Vulnerabilities Detected Below 👇")
+            st.success("Scan Complete! Check for Vulnerabilities Below 👇")
             st.subheader("📊 Interactive Vulnerability Report")
             st.components.v1.html(scan_results.to_html(), height=1200, scrolling=True)
 
@@ -123,8 +128,21 @@ if st.button("🚨 Run Giskard Vulnerability Scan", type="primary", disabled=not
                 mime="text/html"
             )
 
+            # Summary of detected issues
+            if hasattr(scan_results, 'summary') and scan_results.summary():
+                st.subheader("Quick Summary")
+                st.write(scan_results.summary())
+
         except Exception as e:
             st.error("An error occurred during scanning:")
             st.exception(e)
 
 st.caption("Powered by **Giskard AI** — Open-source testing for trustworthy LLMs | Demo by Grok")
+
+st.info("""
+**Why 0 Issues?** Modern LLMs like GPT-3.5-turbo are highly aligned/safe. To see more:
+- Increase temperature to 1.0 (makes outputs more variable).
+- Use focused scans (e.g., Hallucinations).
+- Try open-source models (e.g., via Ollama) for more vulnerabilities.
+Rerun a few times — results vary!
+""")
