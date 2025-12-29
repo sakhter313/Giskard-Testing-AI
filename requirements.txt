@@ -1,5 +1,7 @@
 streamlit>=1.35.0
-giskard[llm]>=2.18.0
+giskard[llm]
 langchain-openai>=0.1.0
+langchain-huggingface>=0.1.0  # New: For open-source models
 langchain-core>=0.2.0
 pandas>=2.0.0
+huggingface-hub>=0.20.0
