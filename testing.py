@@ -30,29 +30,25 @@ with col3:
     st.metric("Unique Languages", safe_df["language"].nunique())
 
 st.subheader("Harm Categories")
-try:
-    # Robust computation: flat set comprehension for unique categories
-    categories = sorted({cat for tax in safe_df["taxonomy"] for cat in tax})
-    st.write(", ".join(categories))
-except Exception as e:
-    st.error(f"Error computing categories: {e}. Falling back to manual list.")
-    categories = ["bias-discrimination", "misinformation", "privacy-violation", "unsettling-interaction", 
-                  "vulnerable-misguidance", "violence-toxicity", "operational-disruption", 
-                  "brand-damaging-conduct", "interaction-disconnect", "criminal-conduct"]
-    st.write(", ".join(categories))
+# Robust computation: skip None taxonomies
+categories = sorted({cat for tax in safe_df["taxonomy"] if tax is not None for cat in tax})
+st.write(", ".join(categories))
 
 # Sidebar filters
 st.sidebar.header("Filters")
 selected_category = st.sidebar.multiselect(
     "Select Harm Categories",
     options=categories,
-    default=[categories[0]] if categories else []  # Default to first if available
+    default=[]  # No default selection - start broad, then filter
 )
 selected_language = st.sidebar.selectbox(
     "Select Language",
     options=sorted(safe_df["language"].unique()),
     index=0
 )
+
+if not selected_category:
+    st.info("No categories selected - showing all samples for the selected language.")
 
 # Filter data (robust: skip non-list taxonomies)
 def has_category(tax, cats):
@@ -92,8 +88,8 @@ else:
             st.write(f"**Sample ID:** {row['sample_id_unsafe']}")
             st.write(f"**Context:** {row['context_unsafe']}")
             st.write(f"**Source:** [{row['source_unsafe']}]({row['source_unsafe']})")
-            safe_tax = row['taxonomy_unsafe'] if isinstance(row['taxonomy_unsafe'], (list, tuple)) else []
-            st.write("**Harm Categories:**", ", ".join(safe_tax))
+            unsafe_tax = row['taxonomy_unsafe'] if isinstance(row['taxonomy_unsafe'], (list, tuple)) else []
+            st.write("**Harm Categories:**", ", ".join(unsafe_tax))
 
             for msg in row["conversation_unsafe"]:
                 role_badge = "👤" if msg["role"] == "user" else "🤖"
@@ -104,8 +100,8 @@ else:
             st.write(f"**Sample ID:** {row['sample_id_safe']}")
             st.write(f"**Context:** {row['context_safe']}")
             st.write(f"**Source:** [{row['source_safe']}]({row['source_safe']})")
-            unsafe_tax = row['taxonomy_safe'] if isinstance(row['taxonomy_safe'], (list, tuple)) else []
-            st.write("**Harm Categories:**", ", ".join(unsafe_tax))
+            safe_tax = row['taxonomy_safe'] if isinstance(row['taxonomy_safe'], (list, tuple)) else []
+            st.write("**Harm Categories:**", ", ".join(safe_tax))
 
             for msg in row["conversation_safe"]:
                 role_badge = "👤" if msg["role"] == "user" else "🤖"
