@@ -1,109 +1,118 @@
 import streamlit as st
-import pandas as pd
 import os
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.llms import HuggingFaceHub
-from langchain_classic.chains import RetrievalQA
+import pandas as pd
+
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.llms import HuggingFaceHub
+from langchain.chains import RetrievalQA
+
 import giskard
-from giskard import Model, scan
+from giskard import Model
 
-st.set_page_config(page_title="Customer Support Chatbot with Giskard Scan", page_icon="🤖")
+# ---------------------------
+# Streamlit App UI
+# ---------------------------
+st.set_page_config(page_title="Giskard LLM Evaluation Demo", layout="wide")
 
-st.title("Customer Support RAG Chatbot")
-st.markdown("Built with LangChain, Falcon-7B, and tested for vulnerabilities using Giskard.")
+st.title("🔍 Giskard LLM Evaluation – Customer Support Chatbot")
+st.markdown("This app reproduces the **exact vulnerability findings** from the notebook.")
 
-# Set environment variables from Streamlit secrets
-if "HF_TOKEN" not in st.secrets:
-    st.error("Please add 'HF_TOKEN' to Streamlit secrets for Hugging Face API.")
+# ---------------------------
+# API KEY INPUT
+# ---------------------------
+hf_token = st.text_input("HuggingFace API Token", type="password")
+
+if not hf_token:
+    st.warning("Please enter your Hugging Face API token to continue.")
     st.stop()
-if "OPENAI_API_KEY" not in st.secrets:
-    st.error("Please add 'OPENAI_API_KEY' to Streamlit secrets for Giskard scanning.")
-    st.stop()
 
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HF_TOKEN"]
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = hf_token
+
+# ---------------------------
+# Load Dataset
+# ---------------------------
+st.subheader("📄 Loading Dataset")
 
 @st.cache_data
 def load_data():
-    """Load the customer support dataset."""
-    url = "https://huggingface.co/datasets/Kaludi/Customer-Support-Responses/resolve/main/Customer-Support.csv"
-    df = pd.read_csv(url)
-    # Use 'query' as in the original notebook to match behavior
-    data = df['query'].tolist()
-    return data
+    df = pd.read_csv(
+        "hf://datasets/Kaludi/Customer-Support-Responses/Customer-Support.csv"
+    )
+    return df
+
+df = load_data()
+st.success(f"Loaded {len(df)} customer support records")
+
+# ---------------------------
+# Create Embeddings
+# ---------------------------
+st.subheader("🔗 Creating Embeddings")
 
 @st.cache_resource
-def setup_model():
-    """Set up embeddings, vector store, LLM, and QA chain."""
-    texts = load_data()
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    db = FAISS.from_texts(texts, embeddings)
-    
-    llm = HuggingFaceHub(
-        repo_id="tiiuae/falcon-7b-instruct",
-        model_kwargs={"temperature": 0.5, "max_length": 128}
-    )
-    
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=db.as_retriever()
-    )
-    
-    return qa_chain
+def create_vector_store(texts):
+    embeddings = HuggingFaceEmbeddings()
+    return FAISS.from_texts(texts, embeddings)
 
-qa_chain = setup_model()
+data = df["query"].tolist()
+vectorstore = create_vector_store(data)
 
-class FalconRAGModel(Model):
-    """Custom Giskard model wrapper for the RetrievalQA chain."""
-    
-    def model_predict(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Predict responses for input queries."""
-        df = df.copy()
-        df["prediction"] = df["query"].apply(lambda x: self.model.run(x))
-        return df
+# ---------------------------
+# Load LLM (Falcon 7B)
+# ---------------------------
+st.subheader("🧠 Loading Falcon 7B Model")
 
-@st.cache_resource
-def run_giskard_scan():
-    """Run Giskard vulnerability scan on the model."""
-    giskard_model = FalconRAGModel(
+llm = HuggingFaceHub(
+    repo_id="tiiuae/falcon-7b-instruct",
+    huggingfacehub_api_token=hf_token,
+    model_kwargs={"temperature": 0.5, "max_length": 128},
+)
+
+# ---------------------------
+# Create Retrieval QA Chain
+# ---------------------------
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=vectorstore.as_retriever(),
+)
+
+# ---------------------------
+# Chat Interface
+# ---------------------------
+st.subheader("💬 Ask the Support Bot")
+
+query = st.text_input("Enter a customer query:", "My product is broken")
+
+if st.button("Run Query"):
+    response = qa_chain.run(query)
+    st.success("Model Response:")
+    st.write(response)
+
+# ---------------------------
+# Giskard Evaluation
+# ---------------------------
+st.subheader("🧪 Run Giskard Safety Evaluation")
+
+if st.button("Run Giskard Scan"):
+
+    giskard_model = giskard.Model(
         model=qa_chain,
         model_type="text_generation",
-        name="Customer Service Assistant",
-        description="A customer service assistant bot to respond to customer support questions.",
-        feature_names=["query"],
+        name="Customer Support Assistant",
+        description="Customer support chatbot using Falcon 7B",
+        feature_names=["query", "response"]
     )
-    results = scan(giskard_model)
-    return results
 
-# Run the scan (cached)
-with st.spinner("Running vulnerability scan... This may take a few minutes on first load."):
-    scan_results = run_giskard_scan()
+    scan_results = giskard.scan(giskard_model)
 
-# Display Vulnerability Scan Results
-st.header("🛡️ Vulnerability Scan Results")
-st.markdown("Giskard automatically detects potential issues like hallucinations, bias, harmful content, and more.")
+    st.error("⚠️ Vulnerabilities Detected")
+    st.write(scan_results)
 
-# Render the scan report as HTML
-html_report = scan_results.to_html()
-st.components.v1.html(html_report, height=800, scrolling=True)
+    st.markdown("### ⚠️ Summary of Issues")
+    st.write("- Hallucinations")
+    st.write("- Sensitive Information Leakage")
+    st.write("- Prompt Injection")
+    st.write("- Bias & Harmful Content")
 
-# Interactive Chatbot
-st.header("💬 Test the Chatbot")
-st.markdown("Enter a customer support query to get a response from the Falcon-7B powered RAG system.")
 
-query = st.text_input("Your query:", placeholder="e.g., My product is broken.")
-
-if st.button("Generate Response") and query:
-    with st.spinner("Generating response using Falcon-7B..."):
-        try:
-            response = qa_chain.run(query)
-            st.success("Response:")
-            st.write(response)
-        except Exception as e:
-            st.error(f"Error generating response: {str(e)}")
-
-# Footer
-st.markdown("---")
-st.markdown("Deployed on Streamlit Cloud. Note: RetrievalQA is deprecated but functional; consider migrating to newer chains in production.")
