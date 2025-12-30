@@ -5,31 +5,31 @@ import pandas as pd
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.llms import HuggingFaceHub
-from langchain.chains import RetrievalQA
+from langchain.chains.retrieval_qa.base import RetrievalQA
 
 import giskard
 from giskard import Model
 
-# -----------------------------------
+# ---------------------------------------
 # STREAMLIT CONFIG
-# -----------------------------------
-st.set_page_config(page_title="Giskard LLM Safety Test", layout="wide")
-st.title("🧪 LLM Safety Testing with Giskard")
+# ---------------------------------------
+st.set_page_config(page_title="Giskard LLM Safety", layout="wide")
+st.title("🧪 LLM Safety Evaluation Dashboard")
 
-# -----------------------------------
-# API KEY
-# -----------------------------------
-hf_token = st.text_input("Enter HuggingFace API Token", type="password")
+# ---------------------------------------
+# HUGGING FACE TOKEN
+# ---------------------------------------
+hf_token = st.text_input("HuggingFace API Token", type="password")
 
 if not hf_token:
-    st.warning("Please enter your Hugging Face API token.")
+    st.warning("Enter HuggingFace API token to continue.")
     st.stop()
 
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = hf_token
 
-# -----------------------------------
+# ---------------------------------------
 # LOAD DATASET
-# -----------------------------------
+# ---------------------------------------
 @st.cache_data
 def load_data():
     return pd.read_csv(
@@ -37,63 +37,65 @@ def load_data():
     )
 
 df = load_data()
-st.success(f"Loaded {len(df)} customer queries")
+st.success(f"Loaded {len(df)} records")
 
-# -----------------------------------
+# ---------------------------------------
 # EMBEDDINGS
-# -----------------------------------
+# ---------------------------------------
 @st.cache_resource
-def build_vector_store(texts):
+def load_vectorstore():
     embeddings = HuggingFaceEmbeddings()
-    return FAISS.from_texts(texts, embeddings)
+    return FAISS.from_texts(df["query"].tolist(), embeddings)
 
-vector_store = build_vector_store(df["query"].tolist())
+vectorstore = load_vectorstore()
 
-# -----------------------------------
-# LOAD LLM
-# -----------------------------------
+# ---------------------------------------
+# LLM
+# ---------------------------------------
 llm = HuggingFaceHub(
     repo_id="tiiuae/falcon-7b-instruct",
     huggingfacehub_api_token=hf_token,
-    model_kwargs={"temperature": 0.5, "max_length": 128},
+    model_kwargs={
+        "temperature": 0.5,
+        "max_length": 128
+    }
 )
 
-# -----------------------------------
-# RETRIEVAL CHAIN
-# -----------------------------------
+# ---------------------------------------
+# RETRIEVAL QA
+# ---------------------------------------
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
-    chain_type="stuff",
-    retriever=vector_store.as_retriever()
+    retriever=vectorstore.as_retriever(),
+    chain_type="stuff"
 )
 
-# -----------------------------------
-# INTERACTIVE CHAT
-# -----------------------------------
-st.subheader("💬 Ask the Support Bot")
-query = st.text_input("Ask a question:", "My product is broken")
+# ---------------------------------------
+# CHAT
+# ---------------------------------------
+st.subheader("💬 Ask a question")
 
-if st.button("Run Query"):
+query = st.text_input("Your question", "My product stopped working")
+
+if st.button("Ask"):
     answer = qa_chain.run(query)
     st.success(answer)
 
-# -----------------------------------
-# GISKARD SAFETY TEST
-# -----------------------------------
-st.subheader("🧪 Run Giskard Safety Scan")
+# ---------------------------------------
+# GISKARD SCAN
+# ---------------------------------------
+st.subheader("🧪 Giskard Security Scan")
 
-if st.button("Run Safety Evaluation"):
-
-    giskard_model = Model(
+if st.button("Run Scan"):
+    model = Model(
         model=qa_chain,
         model_type="text_generation",
         name="Customer Support Assistant",
-        description="Customer support LLM powered by Falcon 7B",
+        description="LLM safety evaluation",
         feature_names=["query", "response"],
     )
 
-    scan_results = giskard.scan(giskard_model)
-
-    st.error("⚠️ Issues Detected")
-    st.write(scan_results)
+    results = giskard.scan(model)
+    st.error("⚠️ Vulnerabilities Found")
+    st.write(results)
 
