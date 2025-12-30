@@ -1,10 +1,10 @@
 streamlit==1.32.2
-langchain==0.1.16
-langchain-community==0.0.36
-langchain-core==0.1.45
+langchain==0.1.20
+langchain-community==0.0.38
+langchain-core==0.1.52
 sentence-transformers==2.6.1
 faiss-cpu==1.8.0
-giskard==2.3.0
+giskard==2.14.6
 huggingface_hub==0.22.2
 pandas==2.2.1
 numpy<2.0
