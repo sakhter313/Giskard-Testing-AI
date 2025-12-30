@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import os
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.llms import HuggingFaceHub
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.llms import HuggingFaceHub
 from langchain.chains import RetrievalQA
 import giskard
 from giskard import Model, scan
@@ -106,4 +106,4 @@ if st.button("Generate Response") and query:
 
 # Footer
 st.markdown("---")
-st.markdown("Deployed on Streamlit Cloud. Ensure `requirements.txt` includes: `streamlit giskard[llm] langchain langchain-community langchain-hub transformers sentence-transformers faiss-cpu pandas`.")
+st.markdown("Deployed on Streamlit Cloud. Ensure `requirements.txt` includes: `streamlit giskard[llm] langchain langchain-community langchain-huggingface transformers sentence-transformers faiss-cpu pandas`.")
