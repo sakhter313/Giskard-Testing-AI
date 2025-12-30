@@ -3,6 +3,7 @@ pandas
 langchain
 langchain-community
 langchain-huggingface
+langchain-classic
 transformers
 sentence-transformers
 faiss-cpu
