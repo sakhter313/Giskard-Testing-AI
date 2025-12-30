@@ -4,7 +4,9 @@ import os
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.llms import HuggingFaceHub
-from langchain.chains import RetrievalQA
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.prompts import PromptTemplate
 import giskard
 from giskard import Model, scan
 
@@ -39,17 +41,27 @@ def setup_model():
     texts = load_data()
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     db = FAISS.from_texts(texts, embeddings)
+    retriever = db.as_retriever()
     
     llm = HuggingFaceHub(
         repo_id="tiiuae/falcon-7b-instruct",
         model_kwargs={"temperature": 0.5, "max_length": 128}
     )
     
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=db.as_retriever()
-    )
+    # Define the prompt for stuff documents chain
+    prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+{context}
+
+Question: {question}
+Helpful Answer:"""
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    
+    # Create the stuff documents chain
+    stuff_chain = create_stuff_documents_chain(llm, PROMPT)
+    
+    # Create the retrieval chain
+    qa_chain = create_retrieval_chain(retriever, stuff_chain)
     
     return qa_chain
 
@@ -61,7 +73,7 @@ class FalconRAGModel(Model):
     def model_predict(self, df: pd.DataFrame) -> pd.DataFrame:
         """Predict responses for input queries."""
         df = df.copy()
-        df["prediction"] = df["query"].apply(lambda x: self.model.run(x))
+        df["prediction"] = df["query"].apply(lambda x: self.model.invoke({"input": x})["answer"])
         return df
 
 @st.cache_resource
@@ -98,7 +110,8 @@ query = st.text_input("Your query:", placeholder="e.g., My product is broken.")
 if st.button("Generate Response") and query:
     with st.spinner("Generating response using Falcon-7B..."):
         try:
-            response = qa_chain.run(query)
+            result = qa_chain.invoke({"input": query})
+            response = result["answer"]
             st.success("Response:")
             st.write(response)
         except Exception as e:
