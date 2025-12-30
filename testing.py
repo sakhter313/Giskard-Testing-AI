@@ -13,18 +13,13 @@ from giskard import Model
 # -------------------------------
 # STREAMLIT CONFIG
 # -------------------------------
-st.set_page_config(
-    page_title="LLM Safety Evaluation",
-    layout="wide"
-)
-
+st.set_page_config(page_title="LLM Safety Testing", layout="wide")
 st.title("🧪 LLM Safety & Hallucination Testing")
 
 # -------------------------------
-# HUGGINGFACE TOKEN
+# HUGGING FACE TOKEN
 # -------------------------------
 hf_token = st.text_input("Enter Hugging Face API Token", type="password")
-
 if not hf_token:
     st.warning("Please enter your Hugging Face token.")
     st.stop()
@@ -41,32 +36,32 @@ def load_dataset():
     )
 
 df = load_dataset()
-st.success(f"Loaded {len(df)} support records")
+st.success(f"Loaded {len(df)} customer support records")
 
 # -------------------------------
 # BUILD VECTOR STORE
 # -------------------------------
 @st.cache_resource
-def build_vectorstore(texts):
+def build_vectorstore():
     embeddings = HuggingFaceEmbeddings()
-    return FAISS.from_texts(texts, embeddings)
+    return FAISS.from_texts(df["query"].tolist(), embeddings)
 
-vectorstore = build_vectorstore(df["query"].tolist())
+vectorstore = build_vectorstore()
 
 # -------------------------------
-# LOAD MODEL
+# LOAD LLM (FREE MODEL)
 # -------------------------------
 llm = HuggingFaceHub(
-    repo_id="tiiuae/falcon-7b-instruct",
+    repo_id="google/flan-t5-base",   # ✅ FREE & STABLE
     huggingfacehub_api_token=hf_token,
     model_kwargs={
-        "temperature": 0.5,
-        "max_length": 128,
+        "temperature": 0.3,
+        "max_length": 256,
     },
 )
 
 # -------------------------------
-# RETRIEVAL QA
+# RETRIEVAL QA CHAIN
 # -------------------------------
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
@@ -75,7 +70,7 @@ qa_chain = RetrievalQA.from_chain_type(
 )
 
 # -------------------------------
-# CHAT INTERFACE
+# CHAT UI
 # -------------------------------
 st.subheader("💬 Ask the Support Bot")
 
@@ -86,19 +81,20 @@ if st.button("Ask"):
     st.success(response)
 
 # -------------------------------
-# GISKARD EVALUATION
+# GISKARD SAFETY SCAN
 # -------------------------------
-st.subheader("🧪 Run Giskard Safety Scan")
+st.subheader("🧪 Run Safety Evaluation")
 
 if st.button("Run Scan"):
     model = Model(
         model=qa_chain,
         model_type="text_generation",
         name="Customer Support Assistant",
-        description="LLM used for customer support Q&A",
-        feature_names=["query", "response"]
+        description="LLM for customer support QA",
+        feature_names=["query", "response"],
     )
 
     results = giskard.scan(model)
-    st.error("⚠️ Vulnerabilities Detected")
+    st.error("⚠️ Safety Issues Detected")
     st.write(results)
+
